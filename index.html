@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#06121f">
+<title>Denizaltı Simülasyonu</title>
+<style>
+  :root {
+    --bg: #06121f; --panel: #0d2238; --panel2: #123050; --line: #234a70;
+    --text: #e6f1fb; --dim: #8fb0cc; --accent: #3fd0ff; --warn: #ffb347;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { padding: env(safe-area-inset-top) 12px env(safe-area-inset-bottom); max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 16px; margin: 10px 0 8px; font-weight: 600; letter-spacing: .02em; display: flex; justify-content: space-between; align-items: center; }
+  .btns { display: flex; gap: 8px; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+    min-height: 44px; min-width: 44px; padding: 0 14px; font-size: 15px; touch-action: manipulation; }
+  button:active { background: var(--line); }
+  .tele { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+  .tile .k { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+  .tile .v { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .tile .v small { font-size: 12px; color: var(--dim); font-weight: 400; margin-left: 2px; }
+  canvas { display: block; width: 100%; border-radius: 12px; border: 1px solid var(--line); background: #000; touch-action: none; }
+  #view { aspect-ratio: 4 / 5; }
+  #graph { aspect-ratio: 16 / 7; margin-top: 8px; }
+  #controls { margin: 10px 0 24px; }
+
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .seg button { min-height: 48px; font-weight: 600; }
+  .seg button.on { background: var(--accent); color: #032033; border-color: var(--accent); }
+  .ctl { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+  .ctl .row { display: flex; justify-content: space-between; align-items: baseline; }
+  .ctl .name { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
+  .ctl .val { font-variant-numeric: tabular-nums; font-weight: 600; }
+  input[type=range] { width: 100%; height: 44px; margin: 4px 0; accent-color: var(--accent); touch-action: pan-y; }
+  input[type=range]:disabled { opacity: .45; }
+  .bgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .bgrid button { min-height: 56px; font-size: 16px; font-weight: 600; user-select: none; -webkit-user-select: none; touch-action: none; }
+  .pid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+  .pid label { font-size: 12px; color: var(--dim); display: block; }
+  .pid input { width: 100%; min-height: 44px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 0 8px; font-size: 16px; }
+  .chk { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; }
+  .chk input { width: 22px; height: 22px; accent-color: var(--accent); }
+  .hidden { display: none !important; }
+  .note { color: var(--dim); font-size: 12px; margin: 6px 2px; }
+</style>
+</head>
+<body>
+<h1><span>Denizaltı Simülasyonu</span>
+  <span class="btns"><button id="btnPause" aria-label="Duraklat">⏸</button><button id="btnReset" aria-label="Sıfırla">↺</button></span></h1>
+
+<div class="tele">
+  <div class="tile"><div class="k">Derinlik</div><div class="v"><span id="tDepth">0.00</span><small>m</small></div></div>
+  <div class="tile"><div class="k">Hız</div><div class="v"><span id="tSpeed">0.00</span><small>m/s</small></div></div>
+  <div class="tile"><div class="k">Yunuslama</div><div class="v"><span id="tPitch">0.0</span><small>°</small></div></div>
+  <div class="tile"><div class="k">Balast</div><div class="v"><span id="tBallast">50</span><small>%</small></div></div>
+  <div class="tile"><div class="k">Dikey hız</div><div class="v"><span id="tVz">0.00</span><small>m/s</small></div></div>
+  <div class="tile"><div class="k">Dümen</div><div class="v"><span id="tPlane">0.0</span><small>°</small></div></div>
+</div>
+
+<canvas id="view"></canvas>
+<canvas id="graph"></canvas>
+
+<div id="controls">
+  <div class="seg">
+    <button id="modeManual" class="on">Manuel</button>
+    <button id="modeHold">Derinlik tutma</button>
+  </div>
+
+  <div class="ctl" id="holdPanel">
+    <div class="row"><span class="name">Hedef derinlik <span style="text-transform:none">(grafiğe/görünüme dokun)</span></span><span class="val"><span id="spVal">3.0</span> m</span></div>
+    <input type="range" id="spSlider" min="0.3" max="9.5" step="0.1" value="3">
+    <div class="pid">
+      <div><label for="kp">Kp (rad/m)</label><input id="kp" type="number" inputmode="decimal" step="0.05" min="0"></div>
+      <div><label for="ki">Ki (rad/m·s)</label><input id="ki" type="number" inputmode="decimal" step="0.005" min="0"></div>
+      <div><label for="kd">Kd (rad·s/m)</label><input id="kd" type="number" inputmode="decimal" step="0.1" min="0"></div>
+    </div>
+    <label class="chk"><input type="checkbox" id="trim" checked> Otomatik balast trimi</label>
+    <div class="note" id="holdInfo">PID hedef yunuslamayı belirler, kıç dümeni uygular: dümenin etkili olması için ileri itiş verin (≥ %30).</div>
+  </div>
+
+  <div class="ctl">
+    <div class="row"><span class="name">Balast doluluğu (komut)</span><span class="val"><span id="vBal">50</span> %</span></div>
+    <input type="range" id="slBal" min="0" max="100" step="1" value="50">
+    <div class="bgrid">
+      <button id="bBoşalt" class="hold" data-act="ballastDown">Boşalt ▲</button>
+      <button id="bNötr" data-act="neutral">Nötr</button>
+      <button id="bDol" class="hold" data-act="ballastUp">Doldur ▼</button>
+    </div>
+  </div>
+
+  <div class="ctl">
+    <div class="row"><span class="name">Kıç dümeni (komut)</span><span class="val"><span id="vPlane">0</span> °</span></div>
+    <input type="range" id="slPlane" min="-30" max="30" step="0.5" value="0">
+    <div class="bgrid">
+      <button class="hold" data-act="planeDown">Burun ↓</button>
+      <button data-act="planeCenter">Ortala</button>
+      <button class="hold" data-act="planeUp">Burun ↑</button>
+    </div>
+  </div>
+
+  <div class="ctl">
+    <div class="row"><span class="name">İtiş</span><span class="val"><span id="vThr">0</span> %</span></div>
+    <input type="range" id="slThr" min="-100" max="100" step="5" value="0">
+    <div class="bgrid">
+      <button data-act="thrBack">Geri</button>
+      <button data-act="thrStop">Dur</button>
+      <button data-act="thrFwd">İleri</button>
+    </div>
+  </div>
+</div>
+
+<script src="sub-physics.js"></script>
+<script src="sub-control.js"></script>
+<script>
+'use strict';
+/* ====================== Durum ====================== */
+const P = SubPhysics, CFG = P.CONFIG;
+const cmd = { ballast: P.neutralFill(), plane: 0, thrust: 0 };   // Aşama 3'te kontrollere bağlanacak
+let sim = P.createSim(CFG, { z: 3 });
+let paused = false;
+const hold = SubControl.createDepthHold(P.neutralFill());
+let mode = 'manual';                                 // 'manual' | 'hold'
+function getDepthSetpoint() { return mode === 'hold' ? hold.setpoint : null; }
+
+const HIST_SECONDS = 60, HIST_DT = 0.1;
+let hist = [], histAcc = 0;
+
+function resetSim() {
+  sim = P.createSim(CFG, { z: 3 });
+  cmd.ballast = P.neutralFill(); cmd.plane = 0; cmd.thrust = 0;
+  hold.reset(); syncControls();
+  hist = []; histAcc = 0;
+}
+
+/* ====================== Canvas yardımcıları ====================== */
+function fitCanvas(c) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const r = c.getBoundingClientRect();
+  const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  return dpr;
+}
+const view = document.getElementById('view'), vctx = view.getContext('2d');
+const graph = document.getElementById('graph'), gctx = graph.getContext('2d');
+
+/* ====================== Yan görünüş ====================== */
+const viewMap = { top: 0, H: 1 };
+const VIEW_M = 3.5;         // ekranda görünen dikey metre
+const SUB_X = 0.4;         // denizaltının ekrandaki yatay konumu (oran)
+
+function drawView() {
+  const dpr = fitCanvas(view), W = view.width, H = view.height, c = vctx;
+  const s = H / VIEW_M;                                   // px / m
+  const bottom = CFG.env.bottomDepth;
+  const camZ = P.clamp(sim.z, VIEW_M / 2 - 1.0, bottom + 0.8 - VIEW_M / 2);
+  const top = camZ - VIEW_M / 2;
+  viewMap.top = top; viewMap.H = H;
+  const Y = z => (z - top) * s;
+  const subPx = W * SUB_X;
+  const X = wx => subPx + (wx - sim.x) * s;
+  const ySurf = Y(0), yBot = Y(bottom);
+
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, W, H);
+
+  // gökyüzü
+  c.fillStyle = '#0f2a44'; c.fillRect(0, 0, W, H);
+  if (ySurf > 0) { const g = c.createLinearGradient(0, 0, 0, ySurf); g.addColorStop(0, '#20486e'); g.addColorStop(1, '#6aa6c9'); c.fillStyle = g; c.fillRect(0, 0, W, ySurf); }
+
+  // su (derinliğe göre koyulaşır)
+  const y0 = Math.max(0, ySurf), y1 = Math.min(H, yBot);
+  if (y1 > y0) {
+    const g = c.createLinearGradient(0, Y(0), 0, Y(bottom));
+    g.addColorStop(0, '#1f7fae'); g.addColorStop(1, '#06223a');
+    c.fillStyle = g; c.fillRect(0, y0, W, y1 - y0);
+  }
+
+  // ışık huzmeleri / parçacıklar (x ile kayar → hareket hissi)
+  c.save(); c.beginPath(); c.rect(0, y0, W, y1 - y0); c.clip();
+  c.fillStyle = 'rgba(200,235,255,0.22)';
+  for (let i = 0; i < 60; i++) {
+    const px = (i * 0.737) % 7, pz = (i * 1.913) % bottom;               // sabit dünya konumu
+    const sx = ((X(px) % (7 * s)) + 7 * s) % (7 * s) - 0.5 * s;          // x ile sarmalanır
+    c.beginPath(); c.arc(sx, Y(pz), 1.5 * dpr, 0, 6.283); c.fill();
+  }
+  // yatay referans çizgileri (her metre)
+  c.strokeStyle = 'rgba(255,255,255,0.06)'; c.lineWidth = 1;
+  for (let m = 1; m < bottom; m++) { c.beginPath(); c.moveTo(0, Y(m)); c.lineTo(W, Y(m)); c.stroke(); }
+  c.restore();
+
+  // dip
+  if (yBot < H) {
+    c.fillStyle = '#6b5a3c'; c.fillRect(0, yBot, W, H - yBot);
+    c.fillStyle = '#4e4129';
+    for (let i = -2; i < 14; i++) {
+      const rx0 = Math.floor(sim.x / 0.8 + i - 5) * 0.8;
+      const sz = 0.08 + 0.06 * Math.abs(Math.sin(rx0 * 12.9898));
+      c.beginPath(); c.ellipse(X(rx0), yBot + 0.5 * sz * s, sz * s, sz * 0.6 * s, 0, Math.PI, 0); c.fill();
+    }
+    c.fillStyle = '#c2a96a'; c.fillRect(0, yBot, W, 3 * dpr);
+  }
+
+  // su yüzeyi (dalga)
+  if (ySurf > -10 && ySurf < H + 10) {
+    c.strokeStyle = '#bfe8ff'; c.lineWidth = 2 * dpr; c.beginPath();
+    for (let x = 0; x <= W; x += 6 * dpr) {
+      const y = ySurf + Math.sin((x / s) * 5 + sim.t * 1.6 - sim.x * 5) * 2.0 * dpr;
+      x === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+    }
+    c.stroke();
+  }
+
+  if (mode === 'hold') {                       // hedef derinlik çizgisi
+    c.strokeStyle = '#ffb347'; c.lineWidth = 1.5 * dpr; c.setLineDash([8 * dpr, 6 * dpr]);
+    c.beginPath(); c.moveTo(40 * dpr, Y(hold.setpoint)); c.lineTo(W, Y(hold.setpoint)); c.stroke(); c.setLineDash([]);
+  }
+  drawSub(c, subPx, Y(sim.z), s, dpr);
+
+  // baloncuklar (itki varken kıçtan)
+  drawBubbles(c, s, X, Y, dpr);
+
+  // derinlik skalası (sol)
+  c.fillStyle = 'rgba(4,14,26,0.55)'; c.fillRect(0, 0, 40 * dpr, H);
+  c.font = `${11 * dpr}px system-ui`; c.textBaseline = 'middle'; c.textAlign = 'left';
+  for (let m = Math.ceil(top * 2) / 2; m <= top + VIEW_M; m += 0.5) {
+    const y = Y(m), major = Math.abs(m - Math.round(m)) < 1e-6;
+    c.strokeStyle = major ? '#cfe8f8' : '#6f93b0'; c.lineWidth = 1 * dpr;
+    c.beginPath(); c.moveTo(0, y); c.lineTo((major ? 12 : 7) * dpr, y); c.stroke();
+    if (major) { c.fillStyle = '#e6f1fb'; c.fillText(m + ' m', 15 * dpr, y); }
+  }
+
+  // yüzeye çıkış / dipte uyarısı
+  c.font = `600 ${12 * dpr}px system-ui`; c.textAlign = 'right'; c.fillStyle = '#ffb347';
+  if (sim.onBottom) c.fillText('DİPTE', W - 10 * dpr, 16 * dpr);
+  else if (sim.z < CFG.hull.diameter / 2) c.fillText('YÜZEYDE', W - 10 * dpr, 16 * dpr);
+}
+
+/* ---- baloncuklar ---- */
+const bubbles = [];
+function spawnBubbles(dt) {
+  const th = Math.abs(sim.thrust) / CFG.thruster.maxForward;
+  if (th < 0.05 || sim.z < 0.1) return;
+  const n = th * 25 * dt;
+  for (let i = 0; i < n || Math.random() < n % 1; i++) {
+    const L = CFG.hull.length / 2 + 0.03, ct = Math.cos(sim.theta), st = Math.sin(sim.theta);
+    bubbles.push({ x: sim.x - L * ct, z: sim.z + L * st, vx: -0.15 * Math.random(), vz: -0.1 - 0.15 * Math.random(), life: 1.5 });
+    break;
+  }
+}
+function updateBubbles(dt) {
+  for (let i = bubbles.length - 1; i >= 0; i--) {
+    const b = bubbles[i]; b.x += b.vx * dt; b.z += b.vz * dt; b.life -= dt;
+    if (b.life <= 0 || b.z < 0) bubbles.splice(i, 1);
+  }
+}
+function drawBubbles(c, s, X, Y, dpr) {
+  c.fillStyle = 'rgba(220,245,255,0.7)';
+  for (const b of bubbles) { c.beginPath(); c.arc(X(b.x), Y(b.z), (1 + 1.5 * b.life / 1.5) * dpr, 0, 6.283); c.fill(); }
+}
+
+/* ---- denizaltı çizimi ---- */
+function drawSub(c, px, py, s, dpr) {
+  const L = CFG.hull.length * s, D = CFG.hull.diameter * s;
+  c.save();
+  c.translate(px, py);
+  c.rotate(-sim.theta);                   // burun yukarı pozitif → saat yönünün tersi
+
+  // gövde: yatay yüzücü gövde (ellips benzeri, burun sağda)
+  const hull = new Path2D();
+  hull.moveTo(-L / 2, 0);
+  hull.bezierCurveTo(-L / 2, -D * 0.55, -L * 0.3, -D / 2, 0, -D / 2);
+  hull.bezierCurveTo(L * 0.3, -D / 2, L / 2, -D * 0.5, L / 2, 0);
+  hull.bezierCurveTo(L / 2, D * 0.5, L * 0.3, D / 2, 0, D / 2);
+  hull.bezierCurveTo(-L * 0.3, D / 2, -L / 2, D * 0.55, -L / 2, 0);
+  hull.closePath();
+
+  // kule (üst), pervane kovanı ve yedek parçalar
+  c.fillStyle = '#e0a400';
+  c.fillRect(-0.08 * L, -D * 0.5 - 0.35 * D, 0.2 * L, 0.4 * D);
+  c.fillStyle = '#ffd24a'; c.fill(hull);
+  c.strokeStyle = '#6b4e00'; c.lineWidth = 1.5 * dpr; c.stroke(hull);
+
+  // balast göstergesi (gövde içinde)
+  c.save(); c.clip(hull);
+  const bw = 0.34 * L, bh = D * 0.6, bx = -0.1 * L, by = -bh / 2;
+  c.fillStyle = 'rgba(0,0,0,0.25)'; c.fillRect(bx, by, bw, bh);
+  c.fillStyle = 'rgba(40,160,255,0.85)'; c.fillRect(bx, by + bh * (1 - sim.b), bw, bh * sim.b);
+  c.restore();
+
+  // iticiler / pervane
+  const rot = sim.t * 40 * (sim.thrust / CFG.thruster.maxForward);
+  c.strokeStyle = '#333'; c.lineWidth = 2 * dpr;
+  c.save(); c.translate(-L / 2 - 0.01 * L, 0); c.scale(Math.cos(rot), 1);
+  c.beginPath(); c.moveTo(0, -D * 0.4); c.lineTo(0, D * 0.4); c.stroke(); c.restore();
+
+  // kıç dümeni (δ>0: firar kenarı aşağı → kıçı aşağı iter)
+  const ax = -CFG.sternPlane.arm * s, pl = 0.09 * s;
+  c.strokeStyle = '#7a5d00'; c.lineWidth = 3.5 * dpr; c.lineCap = 'round';
+  c.beginPath(); c.moveTo(ax, 0);
+  c.lineTo(ax - pl * Math.cos(sim.delta), pl * Math.sin(sim.delta)); c.stroke();
+  // sabit kuyruk dikmesi
+  c.beginPath(); c.moveTo(ax + 0.02 * s, -D * 0.35); c.lineTo(ax - 0.06 * s, -D * 0.55); c.stroke();
+
+  // burun işareti
+  c.fillStyle = '#c8501e'; c.beginPath(); c.arc(L / 2 - 0.05 * s, 0, 0.012 * s + 2, 0, 6.283); c.fill();
+  c.restore();
+}
+
+/* ====================== Grafik ====================== */
+function drawGraph() {
+  const dpr = fitCanvas(graph), W = graph.width, H = graph.height, c = gctx;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.fillStyle = '#071a2c'; c.fillRect(0, 0, W, H);
+  const padL = 40 * dpr, padR = 10 * dpr, padT = 14 * dpr, padB = 20 * dpr;
+  const pw = W - padL - padR, ph = H - padT - padB;
+  const bottom = CFG.env.bottomDepth;
+  const tNow = sim.t, tMin = tNow - HIST_SECONDS;
+  const X = t => padL + (t - tMin) / HIST_SECONDS * pw;
+  const Y = z => padT + z / bottom * ph;
+
+  c.font = `${10 * dpr}px system-ui`; c.fillStyle = '#8fb0cc'; c.textAlign = 'right'; c.textBaseline = 'middle';
+  c.strokeStyle = 'rgba(255,255,255,0.08)'; c.lineWidth = 1;
+  for (let m = 0; m <= bottom; m += 2) { const y = Y(m); c.beginPath(); c.moveTo(padL, y); c.lineTo(W - padR, y); c.stroke(); c.fillText(m + ' m', padL - 5 * dpr, y); }
+  c.textAlign = 'center'; c.textBaseline = 'top';
+  for (let k = 0; k <= 6; k++) { const t = tMin + k * 10; if (t < 0) continue; const x = X(t); c.beginPath(); c.moveTo(x, padT); c.lineTo(x, padT + ph); c.stroke(); c.fillText(t.toFixed(0) + ' s', x, padT + ph + 4 * dpr); }
+  c.fillStyle = '#bfe8ff'; c.fillRect(padL, Y(0) - dpr, pw, 2 * dpr);
+
+  c.save(); c.beginPath(); c.rect(padL, padT, pw, ph); c.clip();
+  // hedef çizgisi (Aşama 3'te derinlik tutma açıkken)
+  if (typeof getDepthSetpoint === 'function') {
+    const sp = getDepthSetpoint();
+    if (sp != null) { c.strokeStyle = '#ffb347'; c.setLineDash([6 * dpr, 4 * dpr]); c.lineWidth = 1.5 * dpr; c.beginPath(); c.moveTo(padL, Y(sp)); c.lineTo(W - padR, Y(sp)); c.stroke(); c.setLineDash([]); }
+  }
+  c.strokeStyle = '#3fd0ff'; c.lineWidth = 2 * dpr; c.lineJoin = 'round'; c.beginPath();
+  hist.forEach((p, i) => { const x = X(p.t), y = Y(p.z); i ? c.lineTo(x, y) : c.moveTo(x, y); });
+  c.lineTo(X(tNow), Y(sim.z)); c.stroke();
+  c.restore();
+  c.textAlign = 'left'; c.textBaseline = 'top'; c.fillStyle = '#8fb0cc';
+  c.fillText('Derinlik–zaman', padL + 4 * dpr, 2 * dpr);
+}
+
+/* ====================== Telemetri ====================== */
+const $ = id => document.getElementById(id);
+function updateTelemetry() {
+  const t = sim.telemetry();
+  $('tDepth').textContent = t.depth.toFixed(2);
+  $('tSpeed').textContent = Math.abs(sim.u).toFixed(2);
+  $('tVz').textContent = (-t.vz).toFixed(2);          // + = yükseliyor
+  $('tPitch').textContent = t.pitchDeg.toFixed(1);
+  $('tBallast').textContent = (t.ballast * 100).toFixed(0);
+  $('tPlane').textContent = t.planeDeg.toFixed(1);
+}
+
+
+/* ====================== Kontroller ====================== */
+const CL = P.clamp, DEG = Math.PI / 180, maxPl = CFG.sternPlane.maxAngle;
+const slBal = $('slBal'), slPlane = $('slPlane'), slThr = $('slThr'), spSlider = $('spSlider');
+
+function syncControls() {
+  slBal.value = Math.round(cmd.ballast * 100); $('vBal').textContent = slBal.value;
+  slPlane.value = (cmd.plane / DEG).toFixed(1); $('vPlane').textContent = (+slPlane.value).toFixed(1);
+  slThr.value = Math.round(cmd.thrust * 100); $('vThr').textContent = slThr.value;
+  spSlider.value = hold.setpoint; $('spVal').textContent = hold.setpoint.toFixed(1);
+}
+function setMode(m) {
+  mode = m;
+  $('modeManual').classList.toggle('on', m === 'manual');
+  $('modeHold').classList.toggle('on', m === 'hold');
+  $('holdPanel').classList.toggle('hidden', m !== 'hold');
+  const auto = m === 'hold';
+  slBal.disabled = slPlane.disabled = auto;                      // otomatik modda PID yönetir
+  document.querySelectorAll('[data-act^="ballast"],[data-act="neutral"],[data-act^="plane"]').forEach(b => b.disabled = auto);
+  if (auto) { hold.reset(); hold.setpoint = CL(sim.z, 0.3, 9.5); }
+  else { cmd.plane = sim.delta; }
+  syncControls();
+}
+$('modeManual').onclick = () => setMode('manual');
+$('modeHold').onclick = () => setMode('hold');
+
+slBal.oninput = () => { cmd.ballast = slBal.value / 100; syncControls(); };
+slPlane.oninput = () => { cmd.plane = CL(slPlane.value * DEG, -maxPl, maxPl); syncControls(); };
+slThr.oninput = () => { cmd.thrust = slThr.value / 100; syncControls(); };
+spSlider.oninput = () => { hold.setpoint = +spSlider.value; syncControls(); };
+
+// PID alanları
+const kIn = { kp: $('kp'), ki: $('ki'), kd: $('kd') };
+kIn.kp.value = hold.Kp; kIn.ki.value = hold.Ki; kIn.kd.value = hold.Kd;
+const readK = () => { for (const [id, key] of [['kp', 'Kp'], ['ki', 'Ki'], ['kd', 'Kd']]) { const v = parseFloat(kIn[id].value); if (isFinite(v) && v >= 0) hold[key] = v; } };
+Object.values(kIn).forEach(i => i.addEventListener('input', readK));
+$('trim').onchange = e => { hold.trimEnabled = e.target.checked; };
+
+// Basılı tutulan / tek dokunuşluk butonlar
+const held = new Set();
+function oneShot(act) {
+  if (act === 'neutral') cmd.ballast = P.neutralFill();
+  else if (act === 'planeCenter') cmd.plane = 0;
+  else if (act === 'thrFwd') cmd.thrust = CL(Math.round((cmd.thrust + 0.25) * 100) / 100, -1, 1);
+  else if (act === 'thrBack') cmd.thrust = CL(Math.round((cmd.thrust - 0.25) * 100) / 100, -1, 1);
+  else if (act === 'thrStop') cmd.thrust = 0;
+  syncControls();
+}
+document.querySelectorAll('#controls button[data-act]').forEach(b => {
+  const act = b.dataset.act;
+  if (b.classList.contains('hold')) {
+    const down = e => { e.preventDefault(); held.add(act); b.setPointerCapture?.(e.pointerId); };
+    const up = () => held.delete(act);
+    b.addEventListener('pointerdown', down); b.addEventListener('pointerup', up);
+    b.addEventListener('pointercancel', up); b.addEventListener('lostpointercapture', up);
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  } else b.addEventListener('click', () => oneShot(act));
+});
+function applyHeld(dt) {
+  if (!held.size || mode === 'hold') return;
+  if (held.has('ballastUp')) cmd.ballast = CL(cmd.ballast + 0.5 * dt, 0, 1);
+  if (held.has('ballastDown')) cmd.ballast = CL(cmd.ballast - 0.5 * dt, 0, 1);
+  if (held.has('planeUp')) cmd.plane = CL(cmd.plane + 40 * DEG * dt, -maxPl, maxPl);
+  if (held.has('planeDown')) cmd.plane = CL(cmd.plane - 40 * DEG * dt, -maxPl, maxPl);
+  syncControls();
+}
+
+// Görünüme / grafiğe dokunarak hedef derinlik seç
+function tapSetpoint(clientY, el, mapFn) {
+  if (mode !== 'hold') return;
+  const r = el.getBoundingClientRect();
+  hold.setpoint = CL(mapFn((clientY - r.top) / r.height), 0.3, 9.5); hold.I = 0; syncControls();
+}
+view.addEventListener('pointerdown', e => tapSetpoint(e.clientY, view, f => viewMap.top + f * VIEW_M));
+graph.addEventListener('pointerdown', e => tapSetpoint(e.clientY, graph, f => ((f * graph.height - 14 * Math.min(devicePixelRatio || 1, 3)) / (graph.height - 34 * Math.min(devicePixelRatio || 1, 3))) * CFG.env.bottomDepth));
+
+/* ====================== Ana döngü ====================== */
+let last = performance.now(), acc = 0;
+function frame(now) {
+  const real = Math.min((now - last) / 1000, 0.1); last = now;
+  applyHeld(real);
+  if (mode === 'hold') syncControls();                 // PID'nin komutlarını kaydırıcılarda göster
+  if (!paused) {
+    acc += real;
+    const dt = CFG.sim.dt;
+    while (acc >= dt) {
+      if (mode === 'hold') { const o = hold.update(sim, dt); cmd.plane = o.plane; cmd.ballast = o.ballast; }
+      sim.step(cmd);
+      acc -= dt;
+      histAcc += dt;
+      if (histAcc >= HIST_DT) { histAcc -= HIST_DT; hist.push({ t: sim.t, z: sim.z }); if (hist.length > HIST_SECONDS / HIST_DT + 5) hist.shift(); }
+    }
+    spawnBubbles(real); updateBubbles(real);
+  }
+  drawView(); drawGraph(); updateTelemetry();
+  requestAnimationFrame(frame);
+}
+$('btnPause').onclick = e => { paused = !paused; e.currentTarget.textContent = paused ? '▶' : '⏸'; };
+$('btnReset').onclick = resetSim;
+requestAnimationFrame(frame);
+syncControls(); setMode('manual');
+window.app = { get sim() { return sim; }, cmd, P, hold, setMode };     // hata ayıklama / test için
+</script>
+</body>
+</html>
