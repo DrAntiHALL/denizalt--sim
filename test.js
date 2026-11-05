@@ -2,6 +2,7 @@
 // Çalıştır: node test.js
 const assert = require('assert');
 const P = require('./sub-physics.js');
+const Ctl = require('./sub-control.js');
 const { CONFIG, createSim, neutralFill } = P;
 
 let failed = 0;
@@ -109,6 +110,38 @@ test('8) Ek kütle ataleti: RK4 Kirchhoff enerji korunumu (sürtünmesiz, serbes
   const rel = Math.abs(E() - E0) / E0;
   assert(rel < 1e-6, 'bağıl enerji hatası ' + rel);
   return `5 s sonra bağıl enerji kayması = ${rel.toExponential(2)}`;
+});
+
+function holdRun(z0, zs, thr, secs) {
+  const sim = createSim(CONFIG, { z: z0 });
+  const hold = Ctl.createDepthHold(neutralFill()); hold.setpoint = zs;
+  let maxz = z0, minz = z0;
+  for (let i = 0; i < secs * 100; i++) {
+    const o = hold.update(sim, CONFIG.sim.dt);
+    sim.step({ ballast: o.ballast, plane: o.plane, thrust: thr });
+    maxz = Math.max(maxz, sim.z); minz = Math.min(minz, sim.z);
+  }
+  return { sim, maxz, minz };
+}
+test('9) PID derinlik tutma: 3 m → 5 m, aşım <20 cm, 90 s sonra ±5 cm', () => {
+  const r = holdRun(3, 5, 0.4, 90);
+  assert(Math.abs(r.sim.z - 5) < 0.05, 'z=' + r.sim.z);
+  assert(r.maxz - 5 < 0.2, 'aşım ' + (r.maxz - 5));
+  return `son z=${r.sim.z.toFixed(3)} m, tepe=${r.maxz.toFixed(2)} m`;
+});
+test('10) PID derinlik tutma: 5 m → 3 m (yukarı), aşım <20 cm', () => {
+  const r = holdRun(5, 3, 0.4, 90);
+  assert(Math.abs(r.sim.z - 3) < 0.05, 'z=' + r.sim.z);
+  assert(3 - r.minz < 0.2, 'aşım ' + (3 - r.minz));
+  return `son z=${r.sim.z.toFixed(3)} m, en sığ=${r.minz.toFixed(2)} m`;
+});
+test('11) PID: küçük hedef basamağında bozulma altında hedefte kalır (ağırlık hatası +0.5 N)', () => {
+  const cfg = JSON.parse(JSON.stringify(CONFIG)); cfg.hull.dryMass += 0.05;      // ~0.5 N ağır
+  const sim = createSim(cfg, { z: 4 });
+  const hold = Ctl.createDepthHold(neutralFill(CONFIG)); hold.setpoint = 4;
+  for (let i = 0; i < 12000; i++) { const o = hold.update(sim, 0.01); sim.step({ ballast: o.ballast, plane: o.plane, thrust: 0.4 }); }
+  assert(Math.abs(sim.z - 4) < 0.05, 'z=' + sim.z);
+  return `z=${sim.z.toFixed(3)} m (integral + balast trimi sapmayı giderdi)`;
 });
 
 console.log(failed ? `\n${failed} test KALDI\n` : '\nTüm testler geçti.\n');
