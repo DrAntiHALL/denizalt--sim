@@ -41,6 +41,7 @@
       surge: 0.10,              // ileri eksen
       heave: 1.00,              // düşey (dik) eksen
       pitch: 1.00,              // yunuslama: Ia = katsayı · ρV · L²/12
+      munkFactor: 0.5,          // -  Munk (destabilize) momentinin ölçeği; 1 = tam teorik, 0 = yok
     },
     drag: {
       Cx: 0.30,                 // -   ileri sürtünme katsayısı (ön kesit alanına göre)
@@ -49,7 +50,7 @@
       pitchQuadratic: 1.9,      // N·m·s²/rad²  dönme sönümlemesi (kuadratik)
     },
     sternPlane: {
-      area: 0.005,              // m²   toplam kıç dümeni alanı
+      area: 0.0035,             // m²   toplam kıç dümeni alanı (küçültüldü: etkinlik azaltıldı)
       arm: 0.42,                // m    ağırlık merkezinden kıç dümenine mesafe (arkada)
       CLalpha: 3.0,             // 1/rad  kaldırma eğimi
       CLmax: 1.0,               // -    stall sınırı (tanh ile yumuşak doyum)
@@ -139,7 +140,7 @@
 
     const du = (Fx - M3 * w * q) / M1;
     const dw = (Fz + M1 * u * q) / M3;
-    const dq = (My + (M3 - M1) * u * w) / Iy;                          // Munk momenti
+    const dq = (My + cfg.addedMass.munkFactor * (M3 - M1) * u * w) / Iy;                          // Munk momenti
 
     return [
       u * cosT + w * sinT,        // dx

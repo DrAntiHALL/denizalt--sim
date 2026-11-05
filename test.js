@@ -97,6 +97,7 @@ test('8) Ek kütle ataleti: RK4 Kirchhoff enerji korunumu (sürtünmesiz, serbes
   const cfg = JSON.parse(JSON.stringify(CONFIG));
   cfg.drag = { Cx: 0, Cz: 0, pitchLinear: 0, pitchQuadratic: 0 };
   cfg.hull.BG = 0;
+  cfg.addedMass.munkFactor = 1;                 // enerji korunumu tam Munk momentiyle geçerli
   cfg.sternPlane.area = 0;                      // dümen kuvveti enerji ekler/alır, hariç tut
   const sim = createSim(cfg, { z: 5, u: 0.5, w: 0.1, q: 0.1, b: neutralFill(cfg) });
   const d = P.derived(cfg);
