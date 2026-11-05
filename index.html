@@ -349,7 +349,7 @@ const $ = id => document.getElementById(id);
 function updateTelemetry() {
   const t = sim.telemetry();
   $('tDepth').textContent = t.depth.toFixed(2);
-  $('tSpeed').textContent = Math.abs(sim.u).toFixed(2);
+  $('tSpeed').textContent = t.speed.toFixed(2);
   $('tVz').textContent = (-t.vz).toFixed(2);          // + = yükseliyor
   $('tPitch').textContent = t.pitchDeg.toFixed(1);
   $('tBallast').textContent = (t.ballast * 100).toFixed(0);

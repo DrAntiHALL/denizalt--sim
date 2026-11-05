@@ -57,6 +57,12 @@
       maxAngle: 30 * Math.PI / 180,   // rad  mekanik sınır
       maxRate: 60 * Math.PI / 180,    // rad/s servo hız sınırı
     },
+    seabed: {                 // dip teması: gövde uçlarında yay-sönümleyici + sürtünme
+      stiffness: 5000,          // N/m    uç başına normal yay
+      damping: 500,             // N·s/m  uç başına normal sönüm (yalnız iterken)
+      friction: 0.5,            // -      Coulomb sürtünme katsayısı μ
+      slipVel: 0.01,            // m/s    sürtünmenin yumuşatma hızı (tanh)
+    },
     thruster: {
       maxForward: 5.0,          // N
       maxReverse: 2.5,          // N
@@ -66,6 +72,7 @@
 
   /* ============================ Yardımcı fonksiyonlar ============================ */
   const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+  const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
 
   function derived(cfg) {
     const { rho } = cfg.env, h = cfg.hull;
@@ -109,6 +116,30 @@
     return { Fz, M: sp.arm * Fz };                       // kıçta aşağı kuvvet → burun yukarı moment
   }
 
+  /**
+   * Dip teması (dünya çerçevesi). Gövde: uçları ±L/2 olan, yarıçapı R kapsül.
+   * Her uç dibe gömülürse normal kuvvet N = k·pen + c·vz (≥0) ve
+   * sürtünme Ft = −μ·N·tanh(vx/v0). Uçta uygulandığı için yunuslama momenti de üretir
+   * (burun dibe dayanınca gövdeyi yatırır). Dönüş: { Fx, Fz (dünya, z aşağı), M, pen }
+   */
+  function seabedForce(z, th, xdot, zdot, q, cfg) {
+    const sb = cfg.seabed, R = cfg.hull.diameter / 2, half = cfg.hull.length / 2;
+    const c = Math.cos(th), s = Math.sin(th);
+    let Fx = 0, Fz = 0, M = 0, pen = -Infinity;
+    for (const bx of [half, -half]) {
+      const rx = bx * c, rz = -bx * s;                 // uç merkezi (CG'ye göre, dünya)
+      const p = z + rz + R - cfg.env.bottomDepth;      // gömülme
+      if (p > pen) pen = p;
+      if (p <= 0) continue;
+      const vx = xdot + q * rz, vz = zdot - q * rx;    // uç noktasının hızı
+      const N = Math.max(0, sb.stiffness * p + sb.damping * vz);
+      const Ft = -sb.friction * N * Math.tanh(vx / sb.slipVel);
+      Fx += Ft; Fz -= N;
+      M += Ft * (rz + R) + N * rx;                     // temas noktası: uç + R aşağı
+    }
+    return { Fx, Fz, M, pen };
+  }
+
   /** Durum türevi. s=[x,z,θ,u,w,q]; ctl={b,delta,thrust} (RK4 adımı boyunca sabit). */
   function deriv(s, ctl, cfg) {
     const [, z, th, u, w, q] = s;
@@ -128,11 +159,17 @@
 
     const pl = planeForce(u, w, q, ctl.delta, cfg, f);
 
+    // Dip teması: dünya kuvvetini gövde eksenine çevir
+    const xdot = u * cosT + w * sinT, zdot = -u * sinT + w * cosT;
+    const sb = seabedForce(z, th, xdot, zdot, q, cfg);
+    const Xs = sb.Fx * cosT - sb.Fz * sinT;
+    const Zs = sb.Fx * sinT + sb.Fz * cosT;
+
     // Gövde eksenindeki kuvvetler: net ağırlık (W-B) dünya aşağı = (-sinθ, cosθ)
-    const Fx = -(W - B) * sinT + ctl.thrust + Xd;
-    const Fz = (W - B) * cosT + pl.Fz + Zd;
+    const Fx = -(W - B) * sinT + ctl.thrust + Xd + Xs;
+    const Fz = (W - B) * cosT + pl.Fz + Zd + Zs;
     // Moment: kaldırma G'nin BG üstündeki B noktasında → doğrultucu −B·BG·sinθ
-    const My = -B * h.BG * sinT + pl.M + Md;
+    const My = -B * h.BG * sinT + pl.M + Md + sb.M;
 
     // Ek kütle dahil etkin kütleler (Kirchhoff): M1=m+ma_x, M3=m+ma_z
     const M1 = m + d.maSurge, M3 = m + d.maHeave;
@@ -143,8 +180,8 @@
     const dq = (My + cfg.addedMass.munkFactor * (M3 - M1) * u * w) / Iy;                          // Munk momenti
 
     return [
-      u * cosT + w * sinT,        // dx
-      -u * sinT + w * cosT,       // dz (aşağı pozitif)
+      xdot,                       // dx
+      zdot,                       // dz (aşağı pozitif)
       q,                          // dθ
       du, dw, dq,
     ];
@@ -194,15 +231,8 @@
                     { b: sim.b, delta: sim.delta, thrust: sim.thrust }, dt, cfg);
       [sim.x, sim.z, sim.theta, sim.u, sim.w, sim.q] = s;
 
-      // Dip teması: yumuşak olmayan basit çarpışma (aşağı hız sıfırlanır)
-      const zMax = cfg.env.bottomDepth - derived(cfg).R;
-      sim.onBottom = false;
-      if (sim.z > zMax) {
-        sim.z = zMax;
-        sim.onBottom = true;
-        const zdot = -sim.u * Math.sin(sim.theta) + sim.w * Math.cos(sim.theta);
-        if (zdot > 0) sim.w = sim.u * Math.tan(sim.theta);   // dikey dünya hızı = 0
-      }
+      // Dip teması artık deriv() içinde kuvvet olarak hesaplanıyor; burada yalnız durum bayrağı
+      sim.onBottom = seabedForce(sim.z, sim.theta, 0, 0, 0, cfg).pen > -0.005;
       sim.t += dt;
       return sim;
     };
@@ -214,7 +244,7 @@
         t: sim.t, depth: sim.z, x: sim.x,
         speed: Math.hypot(sim.u, sim.w),
         vz: -sim.u * sT + sim.w * cT,         // dikey dünya hızı (aşağı +)
-        pitchDeg: sim.theta * 180 / Math.PI,
+        pitchDeg: wrapAngle(sim.theta) * 180 / Math.PI,       // −180..180 (taklalar sarılır)
         ballast: sim.b, planeDeg: sim.delta * 180 / Math.PI, thrust: sim.thrust,
         onBottom: sim.onBottom,
       };
@@ -222,5 +252,5 @@
     return sim;
   }
 
-  return { CONFIG, createSim, deriv, rk4, neutralFill, submergedFraction, planeForce, derived, clamp };
+  return { CONFIG, createSim, deriv, rk4, neutralFill, submergedFraction, planeForce, seabedForce, derived, clamp, wrapAngle };
 });

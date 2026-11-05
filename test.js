@@ -112,6 +112,44 @@ test('8) Ek kütle ataleti: RK4 Kirchhoff enerji korunumu (sürtünmesiz, serbes
   return `5 s sonra bağıl enerji kayması = ${rel.toExponential(2)}`;
 });
 
+test('12) Dip: burun aşağı tam itişte hız patlaması yok, gövde dibe gömülmez', () => {
+  // Ekran görüntüsündeki durum: θ=-80°, itiş %100, dümen -9°
+  const sim = createSim(CONFIG, { z: 9.0, theta: -80 * Math.PI / 180 });
+  const d = P.derived(CONFIG);
+  const vTop = Math.sqrt(2 * CONFIG.thruster.maxForward / (CONFIG.env.rho * CONFIG.drag.Cx * d.Afront));
+  let maxVx = 0, maxPen = -1;
+  for (let i = 0; i < 3000; i++) {
+    sim.step({ ballast: neutralFill(), plane: -9 * Math.PI / 180, thrust: 1 });
+    const vx = sim.u * Math.cos(sim.theta) + sim.w * Math.sin(sim.theta);
+    maxVx = Math.max(maxVx, Math.abs(vx));
+    maxPen = Math.max(maxPen, P.seabedForce(sim.z, sim.theta, 0, 0, 0, CONFIG).pen);
+  }
+  assert(maxVx <= vTop * 1.02, `yatay hız ${maxVx.toFixed(2)} > ${vTop.toFixed(2)}`);
+  assert(maxPen < 0.02, `gömülme ${maxPen.toFixed(3)} m`);        // yay modelinde çarpma anı esnemesi; eski hata 0.44 m idi
+  return `maks yatay hız ${maxVx.toFixed(2)} m/s (serbest tavan ${vTop.toFixed(2)}), maks gömülme ${(maxPen * 1000).toFixed(1)} mm`;
+});
+
+test('13) Dip: ağır gövde eğik düşünce yatar ve durur', () => {
+  const sim = createSim(CONFIG, { z: 9.0, theta: 30 * Math.PI / 180, b: 1 });
+  run(sim, 40, { ballast: 1 });
+  const deg = Math.abs(P.wrapAngle(sim.theta)) * 180 / Math.PI;
+  const v = Math.hypot(sim.u, sim.w);
+  assert(sim.onBottom, 'dipte değil');
+  assert(deg < 1, `θ=${deg}°`);
+  assert(v < 0.01, `v=${v}`);
+  return `θ=${deg.toFixed(2)}°, hız=${v.toExponential(1)} m/s`;
+});
+
+test('14) Dip: sürtünme, ağır gövdeyi zayıf itişle kaydırmaz (μ·N > T)', () => {
+  const sim = createSim(CONFIG, { z: CONFIG.env.bottomDepth - CONFIG.hull.diameter / 2, b: 1 });
+  run(sim, 5, { ballast: 1 });                      // otursun
+  const x0 = sim.x;
+  run(sim, 20, { ballast: 1, thrust: 0.3 });        // 1.5 N itiş < μ·N ≈ 2.4 N
+  const dx = sim.x - x0;
+  assert(Math.abs(dx) < 0.3, `kayma ${dx} m`);
+  return `20 s'de kayma ${(dx * 100).toFixed(1)} cm (serbest suda ~${(20 * 0.95).toFixed(0)} m giderdi)`;
+});
+
 function holdRun(z0, zs, thr, secs) {
   const sim = createSim(CONFIG, { z: z0 });
   const hold = Ctl.createDepthHold(neutralFill()); hold.setpoint = zs;

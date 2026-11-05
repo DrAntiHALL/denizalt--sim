@@ -16,7 +16,7 @@ Repo → *Settings → Pages → Build and deployment → Source: Deploy from a 
 | `sub-physics.js` | Fizik çekirdeği: `CONFIG`, RK4 (dt=0.01 s), kuvvetler, aktüatörler |
 | `sub-control.js` | Derinlik tutma kaskad PID kontrolcüsü |
 | `index.html` | Canvas görünüm, telemetri, grafik, kontroller |
-| `test.js` | 12 test (fizik + PID) |
+| `test.js` | 15 test (fizik, dip teması, PID) |
 
 ## Kullanım
 - **Manuel:** Balast, kıç dümeni ve itiş kaydırıcıları; basılı tutulan butonlar (Doldur/Boşalt, Burun ↑/↓), Nötr, İleri/Geri/Dur.
@@ -29,8 +29,9 @@ Durum: `x, z (derinlik, aşağı +), θ (burun yukarı +), u, w, q` + aktüatör
 - Kıç dümeni: `½ρ·A·CL(α)·V²`, `CL = CLmax·tanh(CLα·α/CLmax)` (yumuşak stall), α = δ − akış açısı; geri giderken etkisiz.
 - Ek kütle: `ρV` oranında katsayılar; Kirchhoff bağlaşım terimleri ve Munk momenti dahil.
 - Doğrultucu moment `−B·BG·sinθ`.
+- Dip teması: gövde, uçları ±L/2 olan bir kapsül sayılır. Dibe gömülen her uca yay-sönümleyici normal kuvvet ve Coulomb sürtünmesi uygulanır. Bunlar uçta etkidiği için moment de üretir: dibe dayanan burun gövdeyi yatırır, sürtünme kaymayı yavaşlatır.
 - Aktüatörler RK4 dışında, hız sınırlı: balast pompası, dümen servosu, itici (1. derece gecikme).
-- Basitleştirmeler: balast suyu ağırlık merkezinde (trim etkisi yok), dalga/akıntı yok, dip yatay ve çarpışma kayıpsız-sıfırlama.
+- Basitleştirmeler: balast suyu ağırlık merkezinde (trim etkisi yok), dalga/akıntı yok, dip yatay. Dip teması yumuşak bir yay olduğu için çarpışmada ~1 cm esneme olur; sürtünme yumuşatıldığı için itiş, sürtünmeden küçükken de çok yavaş (mm/s) bir kayma kalır.
 
 ## Parametreler neyi etkiler (`CONFIG`, SI)
 | Parametre | Etki |
@@ -45,6 +46,8 @@ Durum: `x, z (derinlik, aşağı +), θ (burun yukarı +), u, w, q` + aktüatör
 | `sternPlane.area`, `CLalpha`, `arm` | Dümen etkinliği (yunuslama momenti ∝ alan·kol·V²) |
 | `sternPlane.maxAngle`, `maxRate` | Dümen sınırı ve servo hızı |
 | `thruster.maxForward/Reverse`, `tau` | İtki ve motor tepkisi |
+| `seabed.stiffness`, `damping` | Dip yayının sertliği / sönümü: çarpmada esneme ve sekme |
+| `seabed.friction`, `slipVel` | Dipte sürtünme katsayısı ve yumuşatma hızı (küçükse kayma azalır, çok küçükse sayısal kararsızlık) |
 | `env.rho`, `env.bottomDepth` | Su yoğunluğu (tuzlu: 1025; nötr balast yeniden hesaplanır), dip derinliği |
 
 PID (`sub-control.js` → `CONTROL`): dış döngü `PID(derinlik hatası) → hedef yunuslama` (sınır ±20°), iç döngü `δ = Kθ(θref−θ) − Kq·q`. Integratör, `|hata| < 1 m` bölgesinde çalışır ve doyumda durur (anti-windup). Balast trimi yavaş bir integraldir.

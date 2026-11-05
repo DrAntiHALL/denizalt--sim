@@ -47,7 +47,9 @@
         c.thetaRef = clamp(-(c.Kp * e + c.Ki * c.I + c.Kd * (-vz)), -control.pitchLimit, control.pitchLimit);
 
         // İç döngü
-        let plane = control.inner.Ktheta * (c.thetaRef - sim.theta) - control.inner.Kq * sim.q;
+        // açı farkı −π..π'ye sarılır: takla atmış bir gövdede kontrolcü turları geri sarmaya çalışmasın
+        const eTh = Math.atan2(Math.sin(c.thetaRef - sim.theta), Math.cos(c.thetaRef - sim.theta));
+        let plane = control.inner.Ktheta * eTh - control.inner.Kq * sim.q;
         if (!active) plane = 0;
 
         // Balast trimi
